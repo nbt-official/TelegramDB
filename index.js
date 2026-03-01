@@ -10,28 +10,56 @@ app.get('/api/get-stream', async (req, res) => {
 
     let browser;
     try {
-        // 1. Browser එක background එකේ launch කරනවා
         browser = await puppeteer.launch({
-            headless: "new", // Browser window එක පේන්නේ නැති වෙන්න
-            args: ['--no-sandbox', '--disable-setuid-sandbox']
+            headless: "new",
+            args: [
+                '--no-sandbox', 
+                '--disable-setuid-sandbox',
+                '--disable-blink-features=AutomationControlled' // Automation detect wena eka adu karanawa
+            ]
         });
 
         const page = await browser.newPage();
 
-        // 2. Real Browser එකක් වගේ Headers සෙට් කරනවා
-        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36');
+        // Real mobile browser ekaka look eka denawa
+        await page.setUserAgent('Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Mobile Safari/537.36');
+        
         await page.setExtraHTTPHeaders({
             'Referer': 'https://streamcrichd.com/'
         });
 
-        // 3. Page එකට යනවා (Cloudflare check එක ඉවර වෙනකම් wait වෙනවා)
-        await page.goto(targetUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+        // 1. Page ekata yanawa
+        await page.goto(targetUrl, { 
+            waitUntil: 'networkidle2', 
+            timeout: 60000 
+        });
 
-        // 4. Page එක ඇතුළේ තියෙන JavaScript එක run කරලා link එක ගන්නවා
-        // මෙතනදී අපි 'lgterHUttp' function එක browser එක ඇතුළෙම call කරනවා
+        // 2. JavaScript function eka load wenakam thawa thappara 2-3 k innamu
+        await new Promise(r => setTimeout(r, 3000)); 
+
+        // 3. Function eka thiyeda kiyala check karala eka run karanawa
         const finalUrl = await page.evaluate(() => {
+            // function eka thiyenawada balamu
             if (typeof lgterHUttp === 'function') {
                 return lgterHUttp();
+            }
+            
+            // function eka neththam, source eke thiyena array eka regex walin mehema ganna puluwan
+            const scripts = Array.from(document.querySelectorAll('script'));
+            for (let script of scripts) {
+                const content = script.innerText;
+                if (content.includes('lgterHUttp')) {
+                    // Array extraction logic inside browser context
+                    const match = content.match(/return\(\s*(\["h","t",.+?\])\.join\(""\)/);
+                    if (match) {
+                        const baseUrl = JSON.parse(match[1]).join("");
+                        const spanMatch = content.match(/document\.getElementById\("(.+?)"\)\.innerHTML/);
+                        if (spanMatch) {
+                            const token = document.getElementById(spanMatch[1])?.innerHTML || "";
+                            return baseUrl + token;
+                        }
+                    }
+                }
             }
             return null;
         });
@@ -43,19 +71,18 @@ app.get('/api/get-stream', async (req, res) => {
                 url: finalUrl
             });
         } else {
-            res.status(404).json({ success: false, message: "Could not find the link inside the page." });
+            // Debugging walata page source eka console eke dagamu function eka nethnam
+            const content = await page.content();
+            console.log("Function not found. Page length:", content.length);
+            res.status(404).json({ success: false, message: "Streaming logic not found on page." });
         }
 
     } catch (error) {
-        console.error("Puppeteer Error:", error.message);
+        console.error("Error:", error.message);
         res.status(500).json({ success: false, error: error.message });
     } finally {
-        if (browser) {
-            await browser.close(); // අනිවාර්යයෙන්ම browser එක වහන්න ඕන memory ඉතිරි කරගන්න
-        }
+        if (browser) await browser.close();
     }
 });
 
-app.listen(PORT, () => {
-    console.log(`Puppeteer API is running: http://localhost:${PORT}`);
-});
+app.listen(PORT, () => console.log(`API running on port ${PORT}`));
