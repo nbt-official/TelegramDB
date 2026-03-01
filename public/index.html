@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Free Unlimited Cloud</title>
+    <style>
+        body { font-family: sans-serif; text-align: center; padding: 50px; background: #f4f4f4; }
+        .box { background: white; padding: 30px; border-radius: 10px; display: inline-block; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+    </style>
+</head>
+<body>
+    <div class="box">
+        <h2>Upload to Telegram Cloud</h2>
+        <input type="file" id="fileInput"><br><br>
+        <button onclick="uploadFile()">Upload Now</button>
+        <p id="status"></p>
+    </div>
+
+    <script>
+// index.html eke script eka mehema wenas karanna
+async function uploadFile() {
+    const fileInput = document.getElementById('fileInput');
+    const status = document.getElementById('status');
+    if (!fileInput.files[0]) return alert("File ekak thoranna!");
+
+    const formData = new FormData();
+    formData.append('file', fileInput.files[0]);
+
+    status.innerText = "Uploading to Telegram Cloud...";
+
+    const response = await fetch('/upload', { method: 'POST', body: formData });
+    const data = await response.json();
+
+    if (data.success) {
+        // Website eke domain eka anuwa download link eka hadanawa
+        const downloadLink = `${window.location.origin}/download/${data.telegram_file_id}`;
+        
+        status.innerHTML = `
+            <div style="margin-top:20px; color: green;">
+                ✅ Gode Goda!<br>
+                <b>File Name:</b> ${data.file_name}<br>
+                <b>Download Link:</b> <br>
+                <input type="text" value="${downloadLink}" id="linkBox" readonly style="width:80%; padding:5px;">
+                <button onclick="copyLink()">Copy</button>
+            </div>
+        `;
+    } else {
+        status.innerText = "❌ Upload failed!";
+    }
+}
+
+function copyLink() {
+    const copyText = document.getElementById("linkBox");
+    copyText.select();
+    document.execCommand("copy");
+    alert("Link copied!");
+}
+    </script>
+</body>
+</html>
