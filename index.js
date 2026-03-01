@@ -13,29 +13,31 @@ const CHAT_ID = "-1002061373128";
 app.use(express.static('public')); // Frontend files danna folder eka
 
 // 1. Upload API
+// index.js eke upload route eka mehema wenas karanna
 app.post('/upload', upload.single('file'), async (req, res) => {
     try {
-        if (!req.file) return res.status(400).send('File ekak natha!');
+        if (!req.file) return res.status(400).json({ error: 'File ekak natha!' });
 
-        // Telegram ekata yawamu
+        // Telegram ekata yawana eka loku file ekak nam poddak wela yanawa
+        // E nisa 'sendDocument' kiyana eka await karanna
         const sentMessage = await bot.api.sendDocument(
             CHAT_ID, 
             new InputFile(req.file.buffer, req.file.originalname)
         );
 
-        // File eke details labenawa
-        const fileId = sentMessage.document.file_id;
-
-        res.json({
+       // const fileId = sentMessage.document ? sentMessage.document.file_id : sentMessage.video.file_id;
+// Document ekak nam document.file_id, video ekak nam video.file_id
+        const fileId = sentMessage.document?.file_id || sentMessage.video?.file_id || sentMessage.photo?.[0]?.file_id;
+        return res.json({
             success: true,
             file_name: req.file.originalname,
-            telegram_file_id: fileId,
-            message: "File uploaded successfully to Telegram Cloud!"
+            telegram_file_id: fileId
         });
 
     } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: "Telegram ekata yawanna beri una!" });
+        console.error("Telegram Error:", error);
+        // Error eka frontend ekata yawanna mokatada une kiyala dana ganna
+        return res.status(500).json({ success: false, error: error.message });
     }
 });
 // 2. Download API (Direct link ekakata redirect kirima)
@@ -48,7 +50,8 @@ app.get('/download/:fileId', async (req, res) => {
         
         // Telegram file server eke link eka hadanawa
         // Meka thama direct download link eka
-        const downloadUrl = `https://api.telegram.org/file/bot${process.env.TELEGRAM_BOT_TOKEN}/${file.file_path}`;
+        const TELEGRAM_BOT_TOKEN = "8747219972:AAFV3_pZVfPjeZTKQR48NireVzKUacSmfoY";
+        const downloadUrl = `https://api.telegram.org/file/bot${TELEGRAM_BOT_TOKEN}/${file.file_path}`;
 
         // User wa e link ekata yawamu (Redirect)
         res.redirect(downloadUrl);
