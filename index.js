@@ -1,6 +1,5 @@
 const express = require('express');
-const axios = require('axios');
-const cheerio = require('cheerio');
+const puppeteer = require('puppeteer');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -9,51 +8,54 @@ app.get('/api/get-stream', async (req, res) => {
     const channelId = req.query.id || 'star1in';
     const targetUrl = `https://profamouslife.com/premium.php?player=mobile&live=${channelId}`;
 
+    let browser;
     try {
-        const response = await axios.get(targetUrl, {
-            headers: {
-                'Referer': 'https://streamcrichd.com/',
-                'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-                'Upgrade-Insecure-Requests': '1'
-            }
+        // 1. Browser එක background එකේ launch කරනවා
+        browser = await puppeteer.launch({
+            headless: "new", // Browser window එක පේන්නේ නැති වෙන්න
+            args: ['--no-sandbox', '--disable-setuid-sandbox']
         });
 
-        const html = response.data;
-        const $ = cheerio.load(html);
+        const page = await browser.newPage();
 
-        // 1. lgterHUttp() function eka athule thiyena array eka extract kireema
-        // Regex eka: function lgterHUttp() { return([...].join("") + ... }
-        const urlArrayRegex = /return\(\s*(\["h","t",.+?\])\.join\(""\)/;
-        const arrayMatch = html.match(urlArrayRegex);
+        // 2. Real Browser එකක් වගේ Headers සෙට් කරනවා
+        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36');
+        await page.setExtraHTTPHeaders({
+            'Referer': 'https://streamcrichd.com/'
+        });
 
-        if (!arrayMatch) {
-            return res.status(404).json({ success: false, message: "Streaming array not found." });
+        // 3. Page එකට යනවා (Cloudflare check එක ඉවර වෙනකම් wait වෙනවා)
+        await page.goto(targetUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+
+        // 4. Page එක ඇතුළේ තියෙන JavaScript එක run කරලා link එක ගන්නවා
+        // මෙතනදී අපි 'lgterHUttp' function එක browser එක ඇතුළෙම call කරනවා
+        const finalUrl = await page.evaluate(() => {
+            if (typeof lgterHUttp === 'function') {
+                return lgterHUttp();
+            }
+            return null;
+        });
+
+        if (finalUrl) {
+            res.json({
+                success: true,
+                channel: channelId,
+                url: finalUrl
+            });
+        } else {
+            res.status(404).json({ success: false, message: "Could not find the link inside the page." });
         }
 
-        // 2. Array eka join karala URL eke mul kotasa gannawa
-        const baseUrl = JSON.parse(arrayMatch[1]).join("");
-
-        // 3. Span eka athule thiyena dynamic key eka gannawa
-        // Source eke thiyenne: document.getElementById("cnatitrisBghSakuef").innerHTML
-        // Api kelinma 'cnatitrisBghSakuef' span eken gannawa
-        const dynamicSpanId = "cnatitrisBghSakuef"; 
-        const dynamicToken = $(`#${dynamicSpanId}`).text().trim() || "";
-
-        // 4. Anthima link eka (Base URL + Token)
-        const finalUrl = baseUrl + dynamicToken;
-
-        res.json({
-            success: true,
-            channel: channelId,
-            url: finalUrl
-        });
-
     } catch (error) {
+        console.error("Puppeteer Error:", error.message);
         res.status(500).json({ success: false, error: error.message });
+    } finally {
+        if (browser) {
+            await browser.close(); // අනිවාර්යයෙන්ම browser එක වහන්න ඕන memory ඉතිරි කරගන්න
+        }
     }
 });
 
 app.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`Puppeteer API is running: http://localhost:${PORT}`);
 });
