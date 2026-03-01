@@ -1,66 +1,52 @@
 const express = require('express');
-const multer = require('multer');
-const { Bot, InputFile } = require('grammy');
-const path = require('path');
+const axios = require('axios');
+const cheerio = require('cheerio');
 
 const app = express();
-const upload = multer({ storage: multer.memoryStorage() }); // File eka RAM eke thiyagannawa process karana kan
+const PORT = 0414;
 
-// Telegram Bot Setup
-const bot = new Bot("8747219972:AAFV3_pZVfPjeZTKQR48NireVzKUacSmfoY");
-const CHAT_ID = "-1002061373128";
+app.get('/api/match.m3u8', async (req, res) => {
+    const channelId = req.query.id || 'star1in';
+    const targetUrl = `https://profamouslife.com/premium.php?player=mobile&live=${channelId}`;
 
-app.use(express.static('public')); // Frontend files danna folder eka
-
-// 1. Upload API
-// index.js eke upload route eka mehema wenas karanna
-app.post('/upload', upload.single('file'), async (req, res) => {
     try {
-        if (!req.file) return res.status(400).json({ error: 'File ekak natha!' });
-
-        // Telegram ekata yawana eka loku file ekak nam poddak wela yanawa
-        // E nisa 'sendDocument' kiyana eka await karanna
-        const sentMessage = await bot.api.sendDocument(
-            CHAT_ID, 
-            new InputFile(req.file.buffer, req.file.originalname)
-        );
-
-       // const fileId = sentMessage.document ? sentMessage.document.file_id : sentMessage.video.file_id;
-// Document ekak nam document.file_id, video ekak nam video.file_id
-        const fileId = sentMessage.document?.file_id || sentMessage.video?.file_id || sentMessage.photo?.[0]?.file_id;
-        return res.json({
-            success: true,
-            file_name: req.file.originalname,
-            telegram_file_id: fileId
+        const response = await axios.get(targetUrl, {
+            headers: {
+                'Referer': 'https://streamcrichd.com',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36'
+            }
         });
 
-    } catch (error) {
-        console.error("Telegram Error:", error);
-        // Error eka frontend ekata yawanna mokatada une kiyala dana ganna
-        return res.status(500).json({ success: false, error: error.message });
-    }
-});
-// 2. Download API (Direct link ekakata redirect kirima)
-app.get('/download/:fileId', async (req, res) => {
-    try {
-        const { fileId } = req.params;
+        const html = response.data;
+        const $ = cheerio.load(html);
 
-        // Telegram eken file eka thiyena path eka gannawa
-        const file = await bot.api.getFile(fileId);
+        // Scrape the character array
+        const arrayRegex = /\[\s*"h"\s*,\s*"t"\s*,\s*"t"[\s\S]*?\]/;
+        const match = html.match(arrayRegex);
         
-        // Telegram file server eke link eka hadanawa
-        // Meka thama direct download link eka
-        const TELEGRAM_BOT_TOKEN = "8747219972:AAFV3_pZVfPjeZTKQR48NireVzKUacSmfoY";
-        const downloadUrl = `https://api.telegram.org/file/bot${TELEGRAM_BOT_TOKEN}/${file.file_path}`;
+        if (!match) throw new Error("Stream array not found.");
 
-        // User wa e link ekata yawamu (Redirect)
-        res.redirect(downloadUrl);
+        const baseUrl = JSON.parse(match[0]).join("");
+        const dynamicToken = $('#atsfSahernkiBigtcu').text().trim();
+        const finalStreamUrl = baseUrl + dynamicToken;
+
+        // Fetch the M3U8 content
+        const streamResponse = await axios.get(finalStreamUrl, {
+            headers: {
+                'Origin': 'https://profamouslife.com',
+                'Referer': 'https://profamouslife.com/'
+            }
+        });
+
+        res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
+        res.setHeader('Access-Control-Allow-Origin', '*'); 
+        res.send(streamResponse.data);
 
     } catch (error) {
-        console.error(error);
-        res.status(404).send("File eka hoyaganna baha hari link eka expire wela!");
+        res.status(500).send("Error fetching stream.");
     }
 });
-// Port eka Render eken thiranaya karai
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
+app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+});
