@@ -1,43 +1,40 @@
-const express = require("express");
-const fetch = require("node-fetch");
-
+const express = require('express');
+const fetch = require('node-fetch');
 const app = express();
-const PORT = process.env.PORT || 3000;
 
-app.get("/proxy", async (req, res) => {
+// The specific stream you provided
+const UPSTREAM = 'https://m.mxonlive.xyz/live/16559/crichd/willowusa.m3u8';
+const REFERER = 'https://mxonlive.github.io/';
+const ORIGIN = 'https://mxonlive.github.io';
+
+app.get('/willow.m3u8', async (req, res) => {
   try {
-    const { url, referer, origin } = req.query;
-
-    if (!url) {
-      return res.status(400).send("No url provided");
-    }
-
-    const headers = {
-      "User-Agent": "Mozilla/5.0"
-    };
-
-    if (referer) headers["Referer"] = referer;
-    if (origin) headers["Origin"] = origin;
-
-    const response = await fetch(url, { headers });
+    const response = await fetch(UPSTREAM, {
+      headers: {
+        'Referer': REFERER,
+        'Origin': ORIGIN,
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      }
+    });
 
     if (!response.ok) {
-      return res.status(response.status).send("Upstream error");
+      return res.status(response.status).send(`Upstream returned ${response.status}`);
     }
 
-    // Forward content type
-    res.set("Content-Type", response.headers.get("content-type"));
-    res.set("Access-Control-Allow-Origin", "*");
+    // Standard HLS Mime-Type
+    res.set('Content-Type', 'application/vnd.apple.mpegurl');
+    
+    // Allow your player to access this proxy (CORS)
+    res.set('Access-Control-Allow-Origin', '*');
 
-    // Stream directly
-    response.body.pipe(res);
-
+    const body = await response.text();
+    res.send(body);
   } catch (err) {
     console.error(err);
-    res.status(500).send("Proxy error");
+    res.status(500).send('Internal Server Error');
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+app.listen(3000, () => {
+  console.log('Server running on http://localhost:3000/willow.m3u8');
 });
